@@ -1,9 +1,9 @@
 from datetime import date
 from os import path
-from pathlib import Path, PurePath
+from pathlib import Path
 import re
 from shutil import move
-from typing import Any, ClassVar, Type, Dict, List, Optional, Set, Union
+from typing import Any, ClassVar, Type, Dict, List, Optional, Union
 
 from guessit import guessit
 
@@ -40,7 +40,7 @@ class Target:
     source: Path
     metadata: Metadata
 
-    def __init__(self, file_path: Path, settings: SettingStore | None = None):
+    def __init__(self, file_path: Path, settings: Optional[SettingStore] = None):
         self.source = file_path
         self._settings = settings or SettingStore()
         self._has_moved = False
@@ -85,7 +85,7 @@ class Target:
         return provider_type
 
     @property
-    def directory(self) -> Path | None:
+    def directory(self) -> Optional[Path]:
         settings_key = f"{self.metadata.to_media_type().value}_directory"
         directory = getattr(self._settings, settings_key)
         return Path(directory) if directory else None
@@ -113,19 +113,20 @@ class Target:
         directory = self._make_path(dir_head, dir_tail)
         return self._make_path(directory, filename)
 
-    def _make_path(self, *obj: Union[str, Path, PurePath]) -> Union[PurePath, Path]:
-        # Calling PurePath will create a PurePoxisPath or PureWindowsPath based
-        # on the system platform. This will create one based on the type of the
-        # source path class type instead.
+    def _make_path(self, *obj: Union[str, Path]) -> Path:
+        # Creates a path based on the type of the source path (e.g. PosixPath or WindowsPath).
         return type(self.source)(*obj)
 
     def _parse(self, file_path: Path):
-        # Helper function fpr .idx files
+        # Helper function for .idx files
         def _parse_idx_file(file_path: Path):
             pattern = re.compile("^id:\s?([a-zA-Z]{,3})")
-            for i, line in enumerate(open(file_path)):
-                for match in re.finditer(pattern, line):
-                    return match.group(1)
+            with open(file_path, encoding="utf-8") as f:
+                for line in f:
+                    match = re.search(pattern, line)
+                    if match:
+                        return match.group(1)
+            return None
 
         path_data: Dict[str, Any] = {"language": self._settings.language}
         if is_subtitle(self.source):
@@ -144,7 +145,7 @@ class Target:
                     path_data[k] = Language.parse(v)
                 except MnamerException:
                     continue
-            elif isinstance(v, (int, str, dt.date)):
+            elif isinstance(v, (int, str, date)):
                 path_data[k] = v
             elif isinstance(v, list) and all(isinstance(_, (int, str)) for _ in v):
                 path_data[k] = v[0]
@@ -194,7 +195,7 @@ class Target:
                 self.metadata.language_sub = _parse_idx_file(file_path)
             except MnamerException:
                 pass
-        if is_subtitle(self.metadata.container) and re.search("\Wforced\W", str(file_path)):
+        if is_subtitle(self.metadata.container) and re.search(r"\Wforced\W", str(file_path)):
             self.metadata.forced_sub = True
 
         if isinstance(self.metadata, MetadataMovie):

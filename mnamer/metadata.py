@@ -4,7 +4,7 @@ import dataclasses
 import datetime as dt
 import re
 from string import Formatter
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence, Optional, Union
 
 from mnamer.language import Language
 from mnamer.types import MediaType
@@ -38,12 +38,14 @@ class _MetaFormatter(Formatter):
 class Metadata:
     """A dataclass which transforms and stores media metadata information."""
 
-    container: str | None = None
-    group: str | None = None
-    language: Language | None = None
-    language_sub: Language | None = None
-    quality: str | None = None
-    synopsis: str | None = None
+    container: Optional[str] = None
+    group: Optional[str] = None
+    language: Optional[Language] = None
+    language_sub: Optional[Language] = None
+    quality: Optional[str] = None
+    synopsis: Optional[str] = None
+    media: Union[MediaType, str, None] = None
+    forced_sub: Optional[bool] = None
 
     @classmethod
     def to_media_type(cls) -> MediaType:
@@ -78,7 +80,7 @@ class Metadata:
     @property
     def extension(self):
         if is_subtitle(self.container) and self.language_sub:
-            return f".{self.language_sub.a2}{self.container}"
+            return f".{self.language_sub.a2}{'-forced' if self.forced_sub else ''}{self.container}"
         else:
             return self.container
 

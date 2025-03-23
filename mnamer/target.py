@@ -1,12 +1,11 @@
-from __future__ import annotations
-
-import datetime as dt
+from datetime import date
 from os import path
-from pathlib import Path
+from pathlib import Path, PurePath
+import re
 from shutil import move
-from typing import Any, ClassVar, Type
+from typing import Any, ClassVar, Type, Dict, List, Optional, Set, Union
 
-from guessit import guessit  # type: ignore
+from guessit import guessit
 
 from mnamer.exceptions import MnamerException
 from mnamer.language import Language
@@ -111,11 +110,24 @@ class Target:
         if self._settings.lower:
             filename = filename.lower()
         filename = str_sanitize(filename)
-        directory = Path(dir_head, dir_tail)
-        return Path(directory, filename)
+        directory = self._make_path(dir_head, dir_tail)
+        return self._make_path(directory, filename)
+
+    def _make_path(self, *obj: Union[str, Path, PurePath]) -> Union[PurePath, Path]:
+        # Calling PurePath will create a PurePoxisPath or PureWindowsPath based
+        # on the system platform. This will create one based on the type of the
+        # source path class type instead.
+        return type(self.source)(*obj)
 
     def _parse(self, file_path: Path):
-        path_data: dict[str, Any] = {"language": self._settings.language}
+        # Helper function fpr .idx files
+        def _parse_idx_file(file_path: Path):
+            pattern = re.compile("^id:\s?([a-zA-Z]{,3})")
+            for i, line in enumerate(open(file_path)):
+                for match in re.finditer(pattern, line):
+                    return match.group(1)
+
+        path_data: Dict[str, Any] = {"language": self._settings.language}
         if is_subtitle(self.source):
             try:
                 path_data["language"] = Language.parse(self.source.stem[-2:])
@@ -134,7 +146,7 @@ class Target:
                     continue
             elif isinstance(v, (int, str, dt.date)):
                 path_data[k] = v
-            elif isinstance(v, list) and all([isinstance(_, (int, str)) for _ in v]):
+            elif isinstance(v, list) and all(isinstance(_, (int, str)) for _ in v):
                 path_data[k] = v[0]
         if self._settings.media:
             media_type = self._settings.media
@@ -176,6 +188,15 @@ class Target:
             self.metadata.language_sub = path_data.get("subtitle_language")
         except MnamerException:
             pass
+
+        if not self.metadata.language_sub and self.metadata.container == ".idx":
+            try:
+                self.metadata.language_sub = _parse_idx_file(file_path)
+            except MnamerException:
+                pass
+        if is_subtitle(self.metadata.container) and re.search("\Wforced\W", str(file_path)):
+            self.metadata.forced_sub = True
+
         if isinstance(self.metadata, MetadataMovie):
             self.metadata.name = path_data.get("title")
             self.metadata.year = path_data.get("year")
@@ -187,10 +208,6 @@ class Target:
             alternative_title = path_data.get("alternative_title")
             if alternative_title:
                 self.metadata.series = f"{self.metadata.series} {alternative_title}"
-            # adding year to title can reduce false positives
-            # year = path_data.get("year")
-            # if year:
-            #     self.metadata.series = f"{self.metadata.series} {year}"
 
     def _override_metadata_ids(self):
         id_types = {"imdb", "tmdb", "tvdb", "tvmaze"}
@@ -242,6 +259,13 @@ class Target:
         """Performs the action of renaming and/or moving a file."""
         destination_path = Path(self.destination).resolve()
         destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self.metadata.container == ".idx":
+            relevant_sub = self.source.with_suffix(".sub")
+            dest_relevant_sub = destination_path.with_suffix(".sub")
+            if relevant_sub.exists():
+                move(str(relevant_sub), str(dest_relevant_sub))
+
         try:
             move(str(self.source), destination_path)
         except OSError:  # pragma: no cover

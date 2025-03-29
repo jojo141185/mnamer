@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import date
 from os import path
 from pathlib import Path
@@ -57,7 +58,7 @@ class Target:
             return str(self.source)
 
     @classmethod
-    def populate_paths(cls: Type[Target], settings: SettingStore) -> list[Target]:
+    def populate_paths(cls: Type["Target"], settings: SettingStore) -> list["Target"]:
         """Creates a list of Target objects for media files found in paths."""
         file_paths = crawl_in(settings.targets, settings.recurse)
         file_paths = filter_blacklist(file_paths, settings.ignore)
@@ -68,7 +69,7 @@ class Target:
         return targets
 
     @classmethod
-    def reset_providers(cls):
+    def reset_providers(cls) -> None:
         cls._providers.clear()
 
     @staticmethod
@@ -117,9 +118,9 @@ class Target:
         # Creates a path based on the type of the source path (e.g. PosixPath or WindowsPath).
         return type(self.source)(*obj)
 
-    def _parse(self, file_path: Path):
+    def _parse(self, file_path: Path) -> None:
         # Helper function for .idx files
-        def _parse_idx_file(file_path: Path):
+        def _parse_idx_file(file_path: Path) -> Optional[str]:
             pattern = re.compile("^id:\s?([a-zA-Z]{,3})")
             with open(file_path, encoding="utf-8") as f:
                 for line in f:
@@ -210,7 +211,7 @@ class Target:
             if alternative_title:
                 self.metadata.series = f"{self.metadata.series} {alternative_title}"
 
-    def _override_metadata_ids(self):
+    def _override_metadata_ids(self) -> None:
         id_types = {"imdb", "tmdb", "tvdb", "tvmaze"}
         for id_type in id_types:
             attr = f"id_{id_type}"
